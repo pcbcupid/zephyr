@@ -4,3 +4,6 @@ board:
   vendor: pcbcupid
   socs:
   - name: esp32s3
+    variants:
+    - name: psram
+      cpucluster: procpu

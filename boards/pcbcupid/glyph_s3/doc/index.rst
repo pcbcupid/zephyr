@@ -7,7 +7,9 @@ Overview
 
 Glyph-S3 is a development board based on the ESP32-S3-MINI-1 module,
 
-a dual-core module with 8 MB SPI flash. This board integrates complete
+a dual-core module with 8 MB SPI flash. A PSRAM variant (``glyph_s3/esp32s3/procpu/psram``) is also supported, using the
+
+ESP32-S3-MINI-1 N4R2 module with 4 MB SPI flash and 2 MB PSRAM. This board integrates complete
 
 Wi-Fi and Bluetooth Low Energy functions.
 
