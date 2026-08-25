@@ -42,6 +42,26 @@ Build System
   :kconfig:option:`CONFIG_SOC`, :kconfig:option:`CONFIG_SOC_SERIES`,
   :kconfig:option:`CONFIG_SOC_FAMILY` and ``SOC_FULL_DIR``.
 
+* ``CONFIG_BUILD_NO_GAP_FILL`` has been removed. Gap filling is opt-in through
+  :kconfig:option:`CONFIG_BUILD_OUTPUT_HEX_GAP_FILL` and
+  :kconfig:option:`CONFIG_BUILD_OUTPUT_S19_GAP_FILL`, so simply drop the option.
+
+* :file:`cmake/app/boilerplate.cmake` has been removed. Applications still
+  including it directly must start their :file:`CMakeLists.txt` with
+  ``find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})`` instead.
+
+* Board revision Kconfig fragments named :file:`<board>_<revision>.conf` are no
+  longer read. Rename them to :file:`<board>_<revision>_defconfig`.
+
+* ``zephyr_code_relocate(FILES ...)`` no longer expands wildcard patterns, and
+  now fails on one. Expand the pattern with ``file(GLOB ...)`` and pass the
+  resulting file names instead.
+
+* ``west spdx --init`` is deprecated and will be removed in Zephyr 5.0. A build with
+  :kconfig:option:`CONFIG_BUILD_OUTPUT_META` now asks CMake for the file-based API object model
+  that ``west spdx`` reads, so generating an SBOM no longer needs the build directory to be
+  prepared beforehand: build as usual, then run ``west spdx``.
+
 Kernel
 ******
 
@@ -67,6 +87,27 @@ Kernel
   ``SCHED_SCALABLE`` or ``SCHED_MULTIQ`` and worked around the limitation by
   keeping ``SCHED_SIMPLE`` for affinity purposes can now use their preferred
   backend directly.
+
+* :c:func:`k_sleep` and :c:func:`k_usleep` are no longer system calls of their
+  own.  They are now inline wrappers around the new :c:func:`k_sleep_ticks`
+  system call, so that the compiler can fold or discard their unit conversions.
+  Their prototypes, semantics and return values are unchanged, and they have
+  moved from :file:`include/zephyr/kernel.h` to a new
+  :file:`include/zephyr/sleep.h` which :file:`kernel.h` includes.  Code calling
+  them needs no change.  Out of tree code taking their address, or relying on
+  ``K_SYSCALL_K_SLEEP`` or ``K_SYSCALL_K_USLEEP``, must be updated to use
+  :c:func:`k_sleep_ticks` instead.  Note that it reports an early wakeup from
+  ``K_FOREVER`` as ``K_TICKS_FOREVER``, where :c:func:`k_sleep` returns ``-1``.
+
+* The ``sys_port_trace_k_thread_sleep_*()``, ``sys_port_trace_k_thread_msleep_*()``
+  and ``sys_port_trace_k_thread_usleep_*()`` hooks are replaced by
+  ``sys_port_trace_k_thread_sleep_ticks_enter()`` and
+  ``sys_port_trace_k_thread_sleep_ticks_exit()``, since :c:func:`k_sleep_ticks`
+  is now the only one of the four that is not inline.  The exit hook reports
+  the time left to sleep in ticks, so a backend that presented it as
+  milliseconds should convert, for instance with
+  :c:func:`k_ticks_to_ms_ceil64`.  Out of tree tracing backends defining any of
+  the retired hooks must be updated.
 
 Boards
 ******
@@ -231,6 +272,13 @@ Clock Control
   RT11xx overlays should be updated using the mapping
   ``loop-div = clock-mult * 2`` and ``post-div = clock-div``.
 
+Comparator
+==========
+
+* The deprecated ``nxp,``-prefixed :dtcompatible:`nxp,kinetis-acmp` properties have been removed:
+  use ``enable-pin-out``, ``use-unfiltered-output``, ``enable-high-speed-mode``,
+  ``filter-enable-sample``, ``filter-count``, ``filter-period`` and ``enable-window-mode``.
+
 Controller Area Network (CAN)
 =============================
 
@@ -251,6 +299,10 @@ Counter
   the timer node's ``mux-states`` property instead. The cell layout is unchanged, so an existing
   ``inputmux-connections = <&inputmux0 0 0x06000024>;`` becomes
   ``mux-states = <&inputmux0 0 0x06000024>;`` (:github:`112088`)
+
+* The ``prescaler`` property of :dtcompatible:`nxp,lptmr` has been removed. Use
+  ``prescale-glitch-filter`` and ``prescale-glitch-filter-bypass`` instead. The new property is
+  an exponent, not a divisor: the prescaler divides by ``2^(prescale-glitch-filter + 1)``.
 
 Devicetree
 ==========
@@ -435,15 +487,18 @@ Ethernet
   flattened to match other similar controllers. The clocks, interrupts, ``pinctrl-0``,
   ``pinctrl-names``, ``phy-handle`` and MAC address properties now live directly on the parent
   ``nxp,enet-qos`` node instead of a separate child MAC node. The ``nxp,enet-qos-mac`` compatible
-  and its ``enet_mac`` node have been removed and the :dtcompatible:`nxp,enet-qos-mdio` and
-  :dtcompatible:`nxp,enet-qos-ptp-clock` nodes are now direct children of the controller node. The
-  PTP reference clock has moved onto the parent node's ``clocks`` property using the ``ptp``
-  ``clock-names`` entry. Out-of-tree boards using this controller must move the properties from the
+  and its ``enet_mac`` node have been removed.
+  Out-of-tree boards using this controller must move the properties from the
   old ``enet_mac`` node up to the ``enet`` node. (:github:`115952`)
 
 * The Kconfig option ``CONFIG_ETH_NXP_ENET_QOS_MAC_UNIQUE_MAC_ADDRESS`` has been renamed to
   :kconfig:option:`CONFIG_ETH_NXP_ENET_QOS_UNIQUE_MAC_ADDRESS`. Configurations setting the old
   name must be updated to use the new one. (:github:`115952`)
+
+* The Synopsys DesignWare MAC driver now filters multicast by default
+  (:kconfig:option:`CONFIG_ETH_DWC_ETHER_MULTICAST_FILTER`), so only multicast for the addresses
+  the network stack has joined is received. Disable this option to receive all multicast, as
+  before. (:github:`113235`)
 
 Flash
 =====
@@ -522,6 +577,16 @@ I2C
   :dtcompatible:`ite,it51xxx-i2c` :dtcompatible:`ite,it8xxx2-i2c` transfer
   timeout is now using the generic ``zephyr,transfer-timeout-ms`` property
   instead of ``transfer-timeout-ms``, default to 500ms.
+
+I2S
+===
+
+* :c:func:`i2s_buf_write` now honours the ``timeout`` from the stream configuration when it
+  allocates the transmit block. It previously waited forever, so the documented ``-EAGAIN``
+  return was unreachable, as was ``-ENOMEM`` in a multithreaded build. A caller that relied
+  on the unbounded wait can set ``timeout`` to ``SYS_FOREVER_MS``, but the same field also
+  bounds the driver's enqueue wait, so no single value reproduces the old combination of an
+  unbounded allocation and a bounded enqueue.
 
 Input
 =====
@@ -621,6 +686,15 @@ MSPI
   * ``MSPI_XIP_CFG_STRUCT_DECLARE``/``MSPI_XIP_BASE_ADDR_DECLARE``/``MSPI_XIP_BASE_ADDR_INIT``
     -> ``MSPI_MEMMAP_CFG_STRUCT_DECLARE``/``MSPI_MEMMAP_BASE_ADDR_DECLARE``/``MSPI_MEMMAP_BASE_ADDR_INIT``
   * devicetree property ``xip-config`` -> ``memmap-config`` on MSPI device nodes
+
+Nordic
+======
+
+* The ``owner-id``, ``perm-read``, ``perm-write``, ``perm-execute``, ``perm-secure`` and
+  ``non-secure-callable`` properties of :dtcompatible:`nordic,owned-memory` and
+  :dtcompatible:`nordic,owned-partitions` have been removed. Use ``nordic,access`` instead, e.g.
+  ``<NRF_OWNER_ID_APPLICATION NRF_PERM_RW>``. The owner is no longer implicit: an omitted
+  ``owner-id`` used to mean the domain being compiled, so it must now be named explicitly.
 
 NXP
 ===
@@ -884,6 +958,12 @@ SPI
 * The ``fifo-enable`` property of :dtcompatible:`st,stm32h7-spi` has been removed.
   FIFO is now always used in polling and interrupt mode to enhance performance. A new property
   ``st,fifo-threshold`` can be used to configure the FIFO threshold (default = 1). (:github:`110265`)
+
+* The optional delay argument of :c:macro:`SPI_CONFIG_DT`, :c:macro:`SPI_CONFIG_DT_INST`,
+  :c:macro:`SPI_DT_SPEC_GET`, :c:macro:`SPI_DT_SPEC_INST_GET`, :c:macro:`SPI_DT_IODEV_DEFINE`,
+  :c:macro:`SPI_DT_INST_IODEV_DEFINE` and :c:macro:`SPI_CS_CONTROL_INIT` has been removed; drop
+  it from every invocation. Use the ``spi-cs-setup-delay-ns`` and ``spi-cs-hold-delay-ns``
+  devicetree properties instead (note that they are in nanoseconds rather than microseconds).
 
 Stepper
 =======
@@ -1338,6 +1418,11 @@ Bluetooth Host
   should review their synchronization and callback stack requirements. See
   pull request :github:`93033` for details.
 
+* ``CONFIG_BT_AUTO_PHY_UPDATE`` has been removed. Use the per-role ``BT_AUTO_PHY_CENTRAL``
+  and ``BT_AUTO_PHY_PERIPHERAL`` choices instead. ``=n`` does not translate to dropping the
+  option: the central choice defaults to :kconfig:option:`CONFIG_BT_AUTO_PHY_CENTRAL_2M`, so
+  both roles must be set to ``_NONE`` explicitly.
+
 Bluetooth Services
 ==================
 
@@ -1594,6 +1679,26 @@ Other subsystems
   :c:func:`cpu_load_get_cpu`. Note that :c:func:`cpu_load_get_cpu` returns the load in per mille
   (0...1000) rather than percent; use :c:macro:`CPU_LOAD_PERMILLE_TO_PERCENT` to convert.
 
+Logging
+=======
+
+* The UART dictionary log parsing script ``scripts/logging/dictionary/log_parser_uart.py`` has
+  been removed. Use :zephyr_file:`scripts/logging/dictionary/live_log_parser.py` instead, which
+  takes the port and baud rate after a ``serial`` sub-command.
+
+MCUboot
+=======
+
+* ``CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_WITHOUT_SCRATCH`` has been removed. Use
+  :kconfig:option:`CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_USING_MOVE` instead.
+
+MCUmgr
+======
+
+* ``CONFIG_MCUMGR_GRP_OS_INFO_HARDWARE_INFO_SHORT_HARDWARE_PLATFORM`` has been removed. The
+  :ref:`mcumgr_os_application_info` command now always reports the board target as hardware
+  platform; the pre-4.3 board and board revision output is no longer available.
+
 Random
 ======
 
@@ -1602,8 +1707,21 @@ Random
 
 * ``CONFIG_CS_CTR_DRBG_PERSONALIZATION`` has been removed. It did not have any effect.
 
+Stream Flash
+============
+
+* ``stream_flash_erase_page()`` has been removed. Use :c:func:`flash_area_erase` or
+  :c:func:`flash_erase` instead; there is no Stream Flash API equivalent.
+
 Tools
 *****
+
+* The ``--skip-rebuild`` option of the ``west`` commands that invoke a runner (``flash``,
+  ``debug``, ``debugserver``, ``attach``, ``rtt``, ``reset``, ``robot`` and ``simulate``) has
+  been removed. Use ``--no-rebuild`` instead.
+
+* The ``PYOCD_DAPARG`` environment variable is no longer read by the ``pyocd`` runner. Pass
+  ``--daparg`` to ``west flash``/``west debug`` instead.
 
 * The ``openocd`` runner now selects a debug adapter by serial number through the
   canonical ``-i``/``--dev-id`` option, like the other runners. The previous
@@ -1625,6 +1743,20 @@ lvgl
   underlying touch input controller device node, where they are now the canonical location for
   such transformations.
 
+* :kconfig:option:`CONFIG_LV_Z_FULL_REFRESH` is now part of the ``LV_Z_RENDERING_MODE`` Kconfig
+  choice, alongside :kconfig:option:`CONFIG_LV_Z_PARTIAL_REFRESH` (default) and
+  :kconfig:option:`CONFIG_LV_Z_DIRECT_RENDERING`. Setting ``CONFIG_LV_Z_FULL_REFRESH=y`` in a
+  ``.conf`` fragment still works, but ``CONFIG_LV_Z_FULL_REFRESH=n`` is silently ignored because
+  a choice member cannot be deselected that way. Out-of-tree boards or shields that used
+  ``CONFIG_LV_Z_FULL_REFRESH=n`` to opt out of a full-refresh default must instead override the
+  choice default in a ``Kconfig.defconfig`` or ``.defconfig`` file:
+
+  .. code-block:: kconfig
+
+     choice LV_Z_RENDERING_MODE
+       default LV_Z_PARTIAL_REFRESH
+     endchoice
+
 hal_nxp
 =======
 
@@ -1635,6 +1767,20 @@ hal_nxp
 
 Mbed TLS
 ========
+
+* The following deprecated Kconfig options have been removed:
+
+  * ``CONFIG_MBEDTLS_MD`` -> :kconfig:option:`CONFIG_MBEDTLS_MD_C`
+  * ``CONFIG_MBEDTLS_LMS`` -> :kconfig:option:`CONFIG_MBEDTLS_LMS_C`
+  * ``CONFIG_MBEDTLS_TLS_VERSION_1_2`` -> :kconfig:option:`CONFIG_MBEDTLS_SSL_PROTO_TLS1_2`
+  * ``CONFIG_MBEDTLS_DTLS`` -> :kconfig:option:`CONFIG_MBEDTLS_SSL_PROTO_DTLS`
+  * ``CONFIG_MBEDTLS_TLS_VERSION_1_3`` -> :kconfig:option:`CONFIG_MBEDTLS_SSL_PROTO_TLS1_3`
+  * ``CONFIG_MBEDTLS_TLS_SESSION_TICKETS`` ->
+    :kconfig:option:`CONFIG_MBEDTLS_SSL_SESSION_TICKETS`
+  * ``CONFIG_MBEDTLS_CTR_DRBG_ENABLED`` -> :kconfig:option:`CONFIG_MBEDTLS_CTR_DRBG_C`
+  * ``CONFIG_MBEDTLS_HMAC_DRBG_ENABLED`` -> :kconfig:option:`CONFIG_MBEDTLS_HMAC_DRBG_C`
+
+  Unlike the removed options, the new ones do not enable their dependencies automatically.
 
 * :kconfig:option:`CONFIG_MBEDTLS_SSL_EARLY_DATA` is now an explicit opt-in and is no longer
   implicitly enabled by :kconfig:option:`CONFIG_MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_ENABLED`.
@@ -1718,6 +1864,16 @@ Architectures
   ``mimxrt1180_evk`` and ``frdm_imxrt1186`` cm7 targets enable it by default,
   replacing their previous hand-rolled ``UNMAPPED`` MPU region table entry with
   identical runtime behavior.
+
+* ``CONFIG_SSE`` and ``CONFIG_SSE_FP_MATH`` have been removed. Use
+  :kconfig:option:`CONFIG_X86_SSE` and :kconfig:option:`CONFIG_X86_SSE_FP_MATH`
+  instead.
+
+* ``CONFIG_PLATFORM_SPECIFIC_INIT`` and its ``z_arm_platform_init()`` hook have
+  been removed. Enable :kconfig:option:`CONFIG_SOC_RESET_HOOK` and rename the
+  hook to :c:func:`soc_reset_hook`. The new hook runs later in the reset path,
+  after the stack pointers have been set up, and is skipped on resume from
+  suspend-to-RAM.
 
 Video
 =====
