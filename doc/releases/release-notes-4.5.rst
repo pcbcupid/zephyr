@@ -70,6 +70,16 @@ Removed APIs and options
 
 * Architectures
 
+   * ARM
+
+      * ``CONFIG_PLATFORM_SPECIFIC_INIT``
+      * ``z_arm_platform_init()``
+
+   * x86
+
+      * ``CONFIG_SSE``
+      * ``CONFIG_SSE_FP_MATH``
+
    * Xtensa
 
       * ``CONFIG_XTENSA_BACKTRACE_EXCEPTION_DUMP_HOOK``
@@ -94,13 +104,51 @@ Removed APIs and options
       buffers unconditionally. Applications still setting these options can
       simply drop them.
 
+    * ``CONFIG_BT_AUTO_PHY_UPDATE``, replaced by the ``BT_AUTO_PHY_CENTRAL`` and
+      ``BT_AUTO_PHY_PERIPHERAL`` choices
+
+* Build system
+
+    * ``CONFIG_BUILD_NO_GAP_FILL``
+    * ``cmake/app/boilerplate.cmake``
+    * Board revision Kconfig fragments named ``<board>_<revision>.conf``, replaced by
+      ``<board>_<revision>_defconfig``
+    * Pattern expansion in ``zephyr_code_relocate(FILES ...)``, replaced by ``file(GLOB ...)``
+
+* Comparator
+
+    * ``nxp,enable-output-pin``, ``nxp,use-unfiltered-output``, ``nxp,high-speed-mode``,
+      ``nxp,enable-sample``, ``nxp,filter-count``, ``nxp,filter-period`` and ``nxp,window-mode``
+      properties of :dtcompatible:`nxp,kinetis-acmp`
+
 * Counter
 
     * ``CONFIG_COUNTER_MAXIM_DS3231``
+    * ``prescaler`` property of :dtcompatible:`nxp,lptmr`
 
 * LLEXT
 
     * ``llext_get_fn_table``, replaced by ``llext_get_fn_table_entry``
+
+* Mbed TLS
+
+    * ``CONFIG_MBEDTLS_MD``
+    * ``CONFIG_MBEDTLS_LMS``
+    * ``CONFIG_MBEDTLS_TLS_VERSION_1_2``
+    * ``CONFIG_MBEDTLS_DTLS``
+    * ``CONFIG_MBEDTLS_TLS_VERSION_1_3``
+    * ``CONFIG_MBEDTLS_TLS_SESSION_TICKETS``
+    * ``CONFIG_MBEDTLS_CTR_DRBG_ENABLED``
+    * ``CONFIG_MBEDTLS_HMAC_DRBG_ENABLED``
+
+* MCUboot
+
+    * ``CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_WITHOUT_SCRATCH``, replaced by
+      :kconfig:option:`CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_USING_MOVE`
+
+* MCUmgr
+
+    * ``CONFIG_MCUMGR_GRP_OS_INFO_HARDWARE_INFO_SHORT_HARDWARE_PLATFORM``
 
 * Networking
 
@@ -121,12 +169,36 @@ Removed APIs and options
     * ``TLS_CREDENTIAL_SERVER_CERTIFICATE``
     * ``start_11r_roaming``
 
+* Nordic
+
+    * ``owner-id``, ``perm-read``, ``perm-write``, ``perm-execute``, ``perm-secure`` and
+      ``non-secure-callable`` properties of :dtcompatible:`nordic,owned-memory` and
+      :dtcompatible:`nordic,owned-partitions`
+
 * Random
 
     * ``CONFIG_CTR_DRBG_CSPRNG_GENERATOR``
     * ``CONFIG_CS_CTR_DRBG_PERSONALIZATION``
 
+* SPI
+
+    * The optional delay argument of :c:macro:`SPI_CONFIG_DT`, :c:macro:`SPI_CONFIG_DT_INST`,
+      :c:macro:`SPI_DT_SPEC_GET`, :c:macro:`SPI_DT_SPEC_INST_GET`, :c:macro:`SPI_DT_IODEV_DEFINE`,
+      :c:macro:`SPI_DT_INST_IODEV_DEFINE` and :c:macro:`SPI_CS_CONTROL_INIT` has been removed.
+
+* Stream Flash
+
+    * ``stream_flash_erase_page()``
+
 * West sign support for imgtool, which was deprecated in Zephyr 4.0, has been removed.
+
+* The ``scripts/logging/dictionary/log_parser_uart.py`` dictionary logging script, which was
+  deprecated in Zephyr 4.3, has been removed. Use
+  :zephyr_file:`scripts/logging/dictionary/live_log_parser.py` instead.
+
+* The ``--skip-rebuild`` option of ``west flash``, ``west debug`` and the other commands that
+  invoke a runner, which was deprecated in Zephyr 4.3, has been removed. Use ``--no-rebuild``
+  instead.
 
 Deprecated APIs and options
 ===========================
@@ -204,6 +276,13 @@ Deprecated APIs and options
 
   * All functions in the video driver API (``<zephyr/drivers/video.h>``) have moved to the video
     subsystem (``<zephyr/video/video.h>``). Application only need to rename the ``#include``.
+
+* West
+
+  * ``west spdx --init`` is deprecated. A build with
+    :kconfig:option:`CONFIG_BUILD_OUTPUT_META` now asks CMake for the file-based API that
+    ``west spdx`` reads, so the build directory no longer has to be prepared before it is
+    configured. See :ref:`west-spdx`.
 
 * Work queue
 
@@ -312,6 +391,7 @@ New APIs and options
   * :c:macro:`K_MSGQ_DEFINE_STATIC`
   * :c:macro:`K_MSGQ_DEFINE_TYPE`
   * :c:macro:`K_MSGQ_DEFINE_STATIC_TYPE`
+  * :c:func:`k_sleep_ticks`
 
 * LoRa
 
@@ -410,6 +490,12 @@ New APIs and options
   * :c:macro:`LOG_INST_DBG_PM_DEVICE_RUNTIME_PUT`
   * :c:macro:`LOG_INST_WRN_PM_DEVICE_RUNTIME_PUT`
   * :c:macro:`LOG_INST_ERR_PM_DEVICE_RUNTIME_PUT`
+
+* Pulse IO
+
+  * Added the :ref:`Pulse IO <pulse_io_api>` subsystem, a vendor-neutral
+    API for hardware that generates and captures timed digital edges on a
+    GPIO line.
 
 * Ring buffer
 

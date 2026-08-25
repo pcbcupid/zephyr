@@ -85,3 +85,25 @@
 	pinctrl-0 = <&pinmux_flexcomm0_usart>;
 	pinctrl-names = "default";
 };
+
+&usbfs {
+	pinctrl-0 = <&pinmux_usbfs>;
+	pinctrl-names = "default";
+};
+
+zephyr_udc0: &usbhs {
+	status = "okay";
+};
+
+/* Full-size SD card slot (J7), 4-bit SDIO. */
+&sdif {
+	status = "okay";
+	pinctrl-0 = <&pinmux_sdif>;
+	pinctrl-names = "default";
+
+	mmc {
+		compatible = "zephyr,sdmmc-disk";
+		disk-name = "SD";
+		status = "okay";
+	};
+};

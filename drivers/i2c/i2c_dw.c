@@ -726,9 +726,12 @@ static int i2c_dw_setup(const struct device *dev, uint16_t slave_address)
 	ic_con.bits.restart_en = 1U;
 
 	/* Set addressing mode - (initialization = 7 bit) */
-	if (I2C_ADDR_10_BITS & dw->app_config) {
+	if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
 		LOG_DBG("I2C: using 10-bit address");
 		ic_con.bits.addr_master_10bit = 1U;
+	} else {
+		LOG_DBG("I2C: using 7-bit address");
+		ic_con.bits.addr_master_10bit = 0U;
 	}
 
 	/* Setup the clock frequency and speed mode */
@@ -799,19 +802,15 @@ static int i2c_dw_setup(const struct device *dev, uint16_t slave_address)
 		write_sar(slave_address, reg_base);
 	}
 
-	/* If I2C is being operated in master mode and I2C_DYNAMIC_TAR_UPDATE
-	 * configuration parameter is set to Yes (1), the ic_10bitaddr_master
-	 * bit in ic_tar register would control whether the DW_apb_i2c starts
-	 * its transfers in 7-bit or 10-bit addressing mode.
+	/* If I2C_DYNAMIC_TAR_UPDATE configuration parameter is set to Yes (1),
+	 * the ic_10bitaddr_master bit in ic_tar register would control whether
+	 * the DW_apb_i2c starts its transfers in 7-bit or 10-bit addressing mode.
 	 */
-	if (I2C_MODE_CONTROLLER & dw->app_config) {
-		if (I2C_ADDR_10_BITS & dw->app_config) {
-			ic_tar.bits.ic_10bitaddr_master = 1U;
-		} else {
-			ic_tar.bits.ic_10bitaddr_master = 0U;
-		}
+	if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
+		ic_tar.bits.ic_10bitaddr_master = 1U;
+	} else {
+		ic_tar.bits.ic_10bitaddr_master = 0U;
 	}
-
 	write_tar(ic_tar.raw, reg_base);
 
 #if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
@@ -1382,7 +1381,7 @@ static int i2c_dw_probe_hw(const struct device *dev)
 {
 	struct i2c_dw_dev_config *const dw = dev->data;
 	union ic_con_register ic_con;
-	uint32_t reg_base = DEVICE_MMIO_GET(dev);
+	mm_reg_t reg_base = DEVICE_MMIO_GET(dev);
 
 	if (read_comp_type(reg_base) != I2C_DW_MAGIC_KEY) {
 		LOG_DBG("I2C: DesignWare magic key not found, check base "
